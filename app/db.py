@@ -10,19 +10,21 @@ from .config import get_config
 logger = logging.getLogger(__name__)
 
 # Schema from Immich GitHub repo (server/src/schema/tables/):
-# - face_search: embedding (vector), faceId -> asset_face.id
-# - asset_face: id, personId -> person.id, deletedAt, isVisible
-# - person: id, name, isHidden
-# See: asset-face.table.ts, face-search.table.ts, person.table.ts
+# PostgreSQL column names match TypeScript property names (camelCase), quoted in SQL:
+# - face_search: embedding (vector), "faceId" -> asset_face.id
+# - asset_face: id, "personGroupId" -> person_group.id, "deletedAt", "isVisible"
+# - person_group: id (PK)
+# - person: composite PK (ownerId, personGroupId), personGroupId -> person_group.id, name, is_hidden
+# See: asset-face.table.ts, face-search.table.ts, person.table.ts, person-group.table.ts
 _schema: dict[str, Any] | None = None
 
-# Try Immich v2 schema first: face_search (embedding) -> asset_face (personId) -> person (name).
-# Column names are camelCase in the repo (faceId, personId, isHidden).
+# Try Immich v2 schema first: face_search (embedding) -> asset_face (personGroupId) -> person (name).
+# TypeScript camelCase properties are preserved as-is in PostgreSQL column names.
 FIND_PERSON_IMMICH_V2_SQL = """
 SELECT p.name, (fs.embedding <=> %s::vector) AS dist
 FROM face_search fs
 JOIN asset_face af ON af.id = fs."faceId"
-JOIN person p ON p.id = af."personId"
+JOIN person p ON p."personGroupId" = af."personGroupId"
 WHERE af."deletedAt" IS NULL AND af."isVisible" IS TRUE
   AND (p."isHidden" IS NULL OR p."isHidden" = false)
 ORDER BY fs.embedding <=> %s::vector
